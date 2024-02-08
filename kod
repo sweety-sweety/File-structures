@@ -1,0 +1,471 @@
+#pragma once
+#include <iostream>
+#include <fstream>
+#include <string>
+using namespace std;
+
+//Поскольку мы будем реализовывать обобщенный связанный список, элементы которого могут быть как атомарными значениями, так и списками, то для сохранения вложенности мы введем структуру, описывающую либо элемент, либо список с его содержанием:
+template <class T>
+struct elem {
+	T info;
+	elem<T>* vlozh;
+	elem<T>* next;
+	elem<T>(T a, elem<T> *v = NULL, elem<T> *r = NULL) {
+		info = a;
+		vlozh = v;
+		next = r;
+	}
+};
+
+//Для свободного передвижения по списку и его вложенностям ввели stake с его основными функциями (push, pop и empty):
+template <class T>
+struct stack {
+	elem<T> *info;
+	stack<T> *next;
+	stack<T>() {
+		info = NULL;
+		next = NULL;
+	}
+};
+template <class T>
+void push(stack<T> *&s, elem<T> *x) {
+	stack<T> *q = new stack<T>;
+	q->info = x;
+	q->next = s;
+	s = q;
+}
+template <class T>
+bool empty(stack<T> *s) {
+	return s == NULL;
+}
+template <class T>
+elem<T> *pop(stack<T> *&s) {
+	if (!empty(s)) {
+		stack<T> *q = s;
+		s = s->next;
+		return q->info;
+		delete q;
+	}
+}
+struct sk {
+	int count;
+	sk* next;
+	sk(int a = 0, sk* r = NULL) {
+		count = a;
+		next = r;
+	}
+};
+
+//Мы реализовали конструкторы, деструктор, удаление по номеру элемента и перегрузили несколько операторов ( = , + , << , >> ):
+template <class T>
+class GList {
+protected:
+	elem<T>* top;
+	void delete_elem(elem<T> *a);
+public:
+	GList<T>() { top = NULL; }
+	GList<T>(const GList<T>& a);
+	~GList<T>();
+	GList<T> &operator =(const GList<T> &a);
+	friend GList<T> operator +(const GList<T> &a, const T &b) {
+		GList<T> temp(a);
+		elem<T> *p = new elem<T>(b, NULL, temp.top);
+		temp.top = p;
+		return temp;
+	}
+	void Del(int n);
+	template <class T>
+	friend istream& operator >>(istream& in, GList<T>&a);
+	template <class T>
+	friend ostream& operator <<(ostream& out, const GList<T>&a);
+};
+
+template <class T>
+void GList<T>::delete_elem(elem<T> *a) {
+	stack<T> *s = NULL;
+	push(s, a);
+	while (!empty(s)) {
+		elem<T> *p = pop(s);
+		if (p->next)
+			push(s, p->next);
+		if (p->vlozh)
+			push(s, p->vlozh);
+		delete p;
+	}
+}
+
+template <class T>
+GList<T>::GList(const GList<T>& a) {
+	if (a.top != NULL) {
+		top = new elem<T>;
+		elem<T> *p, *q;
+		stack<T> *s1 = NULL;
+		push(s1, a.top);
+		stack<T> *s2 = NULL;
+		push(s2, top);
+		while (!empty(s1)) {
+			p = pop(s1);
+			q = pop(s2);
+			q->info = p->info;
+			if (p->next) {
+				push(s1, p->next);
+				q->next = new elem<T>;
+				push(s2, q->next);
+			}
+			if (p->vlozh) {
+				push(s1, p->vlozh);
+				q->vlozh = new elem<T>;
+				push(s2, q->vlozh);
+			}
+		}
+	}
+}
+template <class T>
+GList<T>::~GList<T>() {
+	if (top != NULL) {
+		delete_elem(top);
+	}
+}
+template <class T>
+GList<T>& GList<T>::operator =(const GList<T> &a) {
+	if (this == &a)
+		return *this;
+	else {
+		if (top != NULL)
+			delete_elem(top);
+		this(a);
+		return *this;
+	}
+}
+template <class T>
+void GList<T>::Del(int n) {
+	if (top != NULL) {
+		elem<T> *q = top;
+		for (int i = 1; i < n-1 && q; i++)
+			q = q->next;
+		if (n == 1) {
+			top = top->next;
+			if (q->vlozh)
+				delete_elem(q->vlozh);
+			delete q;
+		}
+		else if (q->next) {
+			elem<T> *t = q->next;
+			q->next = q->next->next;
+			if (t->vlozh)
+				delete_elem(t->vlozh);
+			delete t;
+		}
+	}
+}
+template <class T>
+istream& operator >>(istream& in, GList<T>&a) {
+	T x;
+	in >> x;
+	a.top = new elem<T>(x, NULL, NULL);
+	elem<T> *p;
+	stack<T> *s = NULL;
+	push(s, a.top);
+	while (in >> x) {
+		p = pop(s);
+		if (x == '(') {
+			p->vlozh = new elem<T>;
+			push(s, p);
+			push(s, p->vlozh);
+		}
+		else if (x == ',' && p->next == NULL) {
+			p->next = new elem<T>;
+			push(s, p->next);
+		}
+		else if (x == ',' && p->next != NULL) {
+			p = pop(s);
+			p->next = new elem<T>;
+			push(s, p->next);
+		}
+		else if (x == ')') {
+			push(s, p);
+			p = pop(s);
+		}
+		else {
+			push(s, p);
+			p->info = x;
+		}
+	}
+	return in;
+}
+template <class T>
+ostream& operator <<(ostream& out, const GList<T>&a) {
+	if (a.top != NULL) {
+		out << '(';
+		elem<T> *p;
+		int count_2 = 0;
+		sk *vl = new sk;
+		sk * v = vl;
+		stack<T> *s = NULL;
+		push(s, a.top);
+		while (!empty(s)) {
+			p = pop(s);
+			out << p->info;
+			if (p->next && p->vlozh) {
+				push(s, p->next);
+				push(s, p->vlozh);
+				out << "(";
+				v->count++;
+			}
+			else if (p->next && p->vlozh==NULL) {
+				push(s, p->next);
+				out << ",";
+				if (v->count != 0) {
+					v->next = new sk;
+					v = v->next;
+				}
+			}
+			else if (p->next == NULL && p->vlozh) {
+				push(s, p->vlozh);
+				out << "(";
+				v->count++;
+			}
+			else {
+				if (count_2 == v->count)
+					out << ")";
+				while (count_2 != v->count) {
+					out << ")";
+					count_2++;
+				}
+				count_2 = 0;
+				if (v != vl || vl == NULL) {
+					v = vl;
+					while (v->next->next)
+						v = v->next;
+					sk* r = v->next;
+					v->next = NULL;
+					delete r;
+				}
+				else {
+					delete v;
+					vl = new sk;
+					v = vl;
+				}
+				if (!empty(s))
+					out << ",";
+			}
+		}
+		out << ")";
+	}
+	return out;
+}
+
+//Далее мы создали наследника исходного класса с параметром string для реализации файловой структуры, добавив новые методы: 
+class File_tree : public GList<string>{
+public:
+	bool Search(const string &what) {
+		if (top != NULL) {
+			elem<string> *p;
+			stack<string> *s = NULL;
+			push(s, top);
+			while (!empty(s)) {
+				p = pop(s);
+				if (p->info == what)
+					return true;
+				if (p->next)
+					push(s, p->next);
+				if (p->vlozh)
+					push(s, p->vlozh);
+			}
+		}
+		return false;
+	}
+	void this_elem(const string &what, elem<string> *&where) {
+		if (top != NULL) {
+			elem<string> *p;
+			stack<string> *s = NULL;
+			push(s, top);
+			while (!empty(s)) {
+				p = pop(s);
+				if (p->info == what) {
+					where = p;
+					break;
+				}
+				if (p->next)
+					push(s, p->next);
+				if (p->vlozh)
+					push(s, p->vlozh);
+			}
+		}
+		else
+			where = NULL;
+	}
+	void pred_elem(const string &what, elem<string> *&where, bool &vl) {
+		if (top != NULL) {
+			elem<string> *p;
+			stack<string> *s = NULL;
+			push(s, top);
+			while (!empty(s)) {
+				p = pop(s);
+				if (p->next && p->next->info == what) {
+					where = p;
+					vl = 0;
+					break;
+				}
+				if (p->vlozh && p->vlozh->info == what) {
+					where = p;
+					vl = 1;
+					break;
+				}
+				if (p->next) {
+					push(s, p->next);
+				}
+				if (p->vlozh) {
+					push(s, p->vlozh);
+				}
+			}
+		}
+		else
+			where = NULL;
+	}
+	void Add(const string &where, const string &what) {
+		if (this->Search(where)) {
+			elem<string> *where_where = NULL;
+			this->this_elem(where, where_where);
+			elem<string> *q = new elem<string>(what, NULL, where_where->vlozh);
+			where_where->vlozh = q;
+		}
+	}
+	void Del(const string &what) {
+		if (this->Search(what)) {
+			elem<string> *where = NULL;
+			if (top->info != what) {
+				bool vl = 0;
+				this->pred_elem(what, where, vl);
+				if (vl) {
+					elem<string> *t = where->vlozh;
+					where->vlozh = where->vlozh->next;
+					if (t->vlozh)
+						delete_elem(t->vlozh);
+					delete t;
+				}
+				else {
+					elem<string> *t = where->next;
+					where->next = where->next->next;
+					if (t->vlozh) 
+						delete_elem(t->vlozh);
+					delete t;
+				}
+			}
+			else {
+				elem<string> *t = top;
+				top = top->next;
+				if (t->vlozh)
+					delete_elem(t->vlozh);
+				delete t;
+			}
+		}
+	}
+	void show(ostream &out, const string &what) {
+		if (this->Search(what)) {
+			elem<string> *where = NULL;
+			this->this_elem(what, where);
+			if (where->vlozh != NULL) {
+				where = where->vlozh;
+				out << '(';
+				elem<string> *p;
+				int count_2 = 0;
+				sk *vl = new sk;
+				sk * v = vl;
+				stack<string> *s = NULL;
+				push(s, where);
+				while (!empty(s)) {
+					p = pop(s);
+					out << p->info;
+					if (p->next && p->vlozh) {
+						push(s, p->next);
+						push(s, p->vlozh);
+						out << "(";
+						v->count++;
+					}
+					else if (p->next && p->vlozh == NULL) {
+						push(s, p->next);
+						out << ",";
+						if (v->count != 0) {
+							v->next = new sk;
+							v = v->next;
+						}
+					}
+					else if (p->next == NULL && p->vlozh) {
+						push(s, p->vlozh);
+						out << "(";
+						v->count++;
+					}
+					else {
+						while (count_2 != v->count) {
+							out << ")";
+							count_2++;
+						}
+						count_2 = 0;
+						if (v != vl || vl == NULL) {
+							v = vl;
+							while (v->next->next)
+								v = v->next;
+							sk* r = v->next;
+							delete r;
+						}
+						else {
+							delete v;
+							vl = new sk;
+							v = vl;
+						}
+						if (!empty(s))
+							out << ",";
+					}
+				}
+				out << ")";
+			}
+		}
+	}
+	friend istream& operator >>(istream& in, File_tree &a) {
+		char x;
+		in >> x;
+		string z;
+		z.push_back(x);
+		a.top = new elem<string>(z, NULL, NULL);
+		z.clear();
+		elem<string> *p;
+		stack<string> *s = NULL;
+		push(s, a.top);
+		while (in >> x) {
+			p = pop(s);
+			if (x == '(') {
+				in >> x;
+				z.push_back(x);
+				p->vlozh = new elem<string>(z, NULL, NULL);
+				z.clear();
+				push(s, p);
+				push(s, p->vlozh);
+			}
+			else if (x == ',' && p->next == NULL) {
+				in >> x;
+				z.push_back(x);
+				p->next = new elem<string>(z, NULL, NULL);
+				z.clear();
+				push(s, p->next);
+			}
+			else if (x == ',' && p->next != NULL) {
+				p = pop(s);
+				in >> x;
+				z.push_back(x);
+				p->next = new elem<string>(z, NULL, NULL);
+				z.clear();
+				push(s, p->next);
+			}
+			else if (x == ')') {
+				push(s, p);
+				p = pop(s);
+			}
+			else {
+				push(s, p);
+				p->info.push_back(x);
+			}
+		}
+		return in;
+	}
+};
